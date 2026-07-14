@@ -31,10 +31,11 @@ DATASET_FOLDER = 'yolo_format_data'
 
 # Add the names of the people you want to distribute to
 ANNOTATOR_NAMES = [
-    'Raunak',
-    'Akash',
-    'John',
-    'Sarah'
+    'Yash',
+    'Sachin',
+    'Komal',
+    'Aryan',
+    'Jaskaran'
 ]
 
 # Distribution strategy:

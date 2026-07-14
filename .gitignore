@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+paper/
+venv/
+env/
+.venv/
+
+# Logs
+logs/
+*.log
+
+# Generated Annotation Data
+assigned_data/
+distributions/
+
+# OCR Outputs
+ocr_training/
+
+# Dataset Files
+yolo_format_data/train/images/
+yolo_format_data/valid/images/
+yolo_format_data/test/images/
+
+# IDE
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Environment Variables
+.env

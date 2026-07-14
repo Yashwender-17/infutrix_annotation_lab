@@ -1,0 +1,6 @@
+Timestamp,Annotator,Image Name,Session ID,Calling File,Calling Function,Model,Prompt Tokens,Output Tokens,Thoughts Tokens,Total Tokens,Input Cost ($),Output Cost ($),Total Cost ($)
+2026-07-14 11:32:15,Annotator,Akash_10_jpg.rf.eddc4b82479492761d183b41e439147d.jpg,annotation_lab,app.py,_call_gemini_ocr,gemini-3.1-flash-lite,1171,134,0,1305,0.000293,0.000201,0.000494
+2026-07-14 12:16:49,Annotator,Akash_11_jpg.rf.9aa4b8510a027ba532fe001a2c7d4531.jpg,annotation_lab,app.py,_call_gemini_ocr,gemini-3.1-flash-lite,1171,117,0,1288,0.000293,0.000175,0.000468
+2026-07-14 12:21:16,Annotator,Akash_12_jpg.rf.ee1b0b92565de86a5d1f7cbda966a31d.jpg,annotation_lab,app.py,_call_gemini_ocr,gemini-3.1-flash-lite,1171,119,0,1290,0.000293,0.000179,0.000471
+2026-07-14 12:22:10,Annotator,Akash_13_jpg.rf.1ba223da65dbbb22e4a19feb7857cddc.jpg,annotation_lab,app.py,_call_gemini_ocr,gemini-3.1-flash-lite,1171,124,0,1295,0.000293,0.000186,0.000479
+2026-07-14 12:48:03,Annotator,upload_132_1773845476383-1025060180_page_004_jpg.rf.0cb77018a98908f158182fbe17b5701e.jpg,annotation_lab,app.py,_call_gemini_ocr,gemini-3.1-flash-lite,1205,546,0,1751,0.000301,0.000819,0.001120

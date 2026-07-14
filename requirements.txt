@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Infutrix Annotation Lab — Requirements
+# Install with: pip install -r requirements.txt
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Web server
+flask>=3.0.0
+
+# Image processing (polygon masking for OCR)
+Pillow>=10.0.0
+
+# Google Gemini / Vertex AI SDK (may already be installed)
+google-genai>=1.0.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# All other dependencies (pathlib, json, csv, shutil, asyncio,
+# concurrent.futures, zipfile, datetime) are Python stdlib — no install needed.
+# ─────────────────────────────────────────────────────────────────────────────

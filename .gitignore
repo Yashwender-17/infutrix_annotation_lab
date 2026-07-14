@@ -35,3 +35,4 @@ Thumbs.db
 
 # Environment Variables
 .env
+lab_settings.json

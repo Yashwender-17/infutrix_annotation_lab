@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infutrix Annotation Lab — Dataset Explorer</title>
+  <meta name="description" content="YOLO dataset annotation lab — view, manage and distribute annotated images with Gemini OCR.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+    (function() {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark-mode');
+      }
+    })();
+  </script>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Topbar ────────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <a href="/" class="topbar-logo">
+      <div class="logo-icon">🧬</div>
+      <span>Infutrix Annotation Lab</span>
+    </a>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions">
+      <a href="/dashboard" class="btn btn-primary" id="btnOpenDashboard">
+        <span>👤</span> Annotator Dashboard
+      </a>
+      <button class="btn btn-ghost" id="btnThemeToggle" data-tip="Toggle Light/Dark Theme" style="font-size:14px; padding: 6px 10px;">🌓</button>
+      <button class="btn btn-ghost" id="btnSettingsTop" onclick="document.getElementById('settingsModal').classList.add('open')">
+        <span>⚙️</span> Settings
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Stats Bar ─────────────────────────────────────────────────────────── -->
+  <div class="stats-row">
+    <div class="stat-chip">
+      <div>
+        <div class="stat-value" id="statTotal">{{ stats.total }}</div>
+        <div class="stat-label">Total Images</div>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <div>
+        <div class="stat-value" style="color:var(--teal)" id="statValidated">{{ stats.validated }}</div>
+        <div class="stat-label">Validated</div>
+      </div>
+    </div>
+    <div class="stat-chip">
+      <div>
+        <div class="stat-value" style="color:var(--amber)" id="statPending">{{ stats.pending }}</div>
+        <div class="stat-label">Pending OCR</div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div style="flex:1; display:flex; align-items:center; gap:12px;">
+      <div class="progress-bar-wrap" style="flex:1">
+        <div class="progress-bar-fill" id="headerProgressBar"
+          style="width: {{ ((stats.validated / stats.total * 100) if stats.total else 0)|round|int }}%"></div>
+      </div>
+      <span id="statPct" style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);white-space:nowrap">
+        {{ ((stats.validated / stats.total * 100) if stats.total else 0)|round|int }}%
+      </span>
+    </div>
+
+    <!-- Splits -->
+    {% for split, cnt in stats.splits.items() %}
+    <div class="stat-chip">
+      <div>
+        <div class="stat-value" style="font-size:13px">{{ cnt }}</div>
+        <div class="stat-label">{{ split }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Main Body ─────────────────────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- Sidebar filters -->
+    <aside class="sidebar">
+      <div>
+        <div class="sidebar-section-title">Split</div>
+        <div class="filter-group">
+          <button class="filter-item active" data-filter="split" data-value="all" id="filterAll">
+            All
+            <span class="filter-count">{{ stats.total }}</span>
+          </button>
+          {% for split, cnt in stats.splits.items() %}
+          <button class="filter-item" data-filter="split" data-value="{{ split }}">
+            {{ split | capitalize }}
+            <span class="filter-count">{{ cnt }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div>
+        <div class="sidebar-section-title">OCR Status</div>
+        <div class="filter-group">
+          <button class="filter-item active" data-filter="status" data-value="all">All</button>
+          <button class="filter-item" data-filter="status" data-value="validated">✅ Validated</button>
+          <button class="filter-item" data-filter="status" data-value="pending">🔄 Pending</button>
+          <button class="filter-item" data-filter="status" data-value="skipped">⏭ Skipped</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sidebar-section-title">Search</div>
+        <input type="text" id="searchInput" placeholder="filename...">
+      </div>
+    </aside>
+
+    <!-- Grid -->
+    <div class="grid-area">
+      {% if mode == 'none' %}
+      <div class="empty-state">
+        <div class="icon">📂</div>
+        <h2>No dataset found</h2>
+        <p>Place your <code>yolo_format_data/</code> folder alongside <code>app.py</code> and restart.</p>
+      </div>
+      {% else %}
+      <div class="image-grid" id="imageGrid">
+        <!-- Populated by JS -->
+      </div>
+      <div id="paginationRow" style="display:flex;justify-content:center;gap:8px;margin-top:20px;padding-bottom:20px">
+      </div>
+      {% endif %}
+    </div>
+
+  </div><!-- /main-content -->
+
+</div><!-- /app-shell -->
+
+<!-- ── Settings Modal ─────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-title">⚙️ Settings</div>
+    <div class="modal-subtitle">Configuration for OCR and annotation session.</div>
+
+    <div class="settings-row">
+      <label for="settingModel">Gemini Model</label>
+      <select id="settingModel">
+        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (recommended)</option>
+        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label for="settingProject">GCP Project ID</label>
+      <input type="text" id="settingProject" placeholder="gradesmith-demo">
+    </div>
+
+    <div class="settings-row">
+      <label for="settingConcurrency">OCR Concurrency (parallel requests)</label>
+      <input type="number" id="settingConcurrency" min="1" max="50" value="10">
+    </div>
+
+    <div class="settings-row">
+      <label for="settingAnnotator">Annotator Name</label>
+      <input type="text" id="settingAnnotator" placeholder="Your name">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="settingsCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="settingsSaveBtn">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { renderGrid, clearRenderCache } from '/static/js/viewer.js';
+
+  // ── Data from server ──────────────────────────────────────────────────────
+  const ALL_IMAGES = {{ images | tojson }};
+  let _settings = {};
+
+  // ── Filters ───────────────────────────────────────────────────────────────
+  let filterSplit  = 'all';
+  let filterStatus = 'all';
+  let filterSearch = '';
+  const PAGE_SIZE  = 24;
+  let currentPage  = 1;
+
+  function filteredImages() {
+    return ALL_IMAGES.filter(img => {
+      if (filterSplit  !== 'all' && img.split !== filterSplit)           return false;
+      if (filterStatus !== 'all' && img.ocr_status !== filterStatus)     return false;
+      if (filterSearch && !img.filename.toLowerCase().includes(filterSearch)) return false;
+      return true;
+    });
+  }
+
+  function rebuildGrid() {
+    clearRenderCache();
+    const imgs  = filteredImages();
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const page  = imgs.slice(start, start + PAGE_SIZE);
+    renderGrid(page, 'imageGrid', img => {
+      window.location.href = `/dashboard?highlight=${img.filename}`;
+    });
+    buildPagination(imgs.length);
+  }
+
+  function buildPagination(total) {
+    const pages  = Math.ceil(total / PAGE_SIZE);
+    const row    = document.getElementById('paginationRow');
+    if (!row) return;
+    row.innerHTML = '';
+    if (pages <= 1) return;
+
+    const mkBtn = (label, page, disabled, active) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.className = `btn ${active ? 'btn-primary' : 'btn-ghost'}`;
+      b.style.padding = '6px 10px';
+      b.disabled = disabled;
+      b.addEventListener('click', () => { currentPage = page; rebuildGrid(); });
+      return b;
+    };
+
+    row.appendChild(mkBtn('←', currentPage - 1, currentPage === 1, false));
+    for (let p = 1; p <= pages; p++) {
+      if (p === 1 || p === pages || Math.abs(p - currentPage) <= 2) {
+        row.appendChild(mkBtn(p, p, false, p === currentPage));
+      } else if (Math.abs(p - currentPage) === 3) {
+        const dots = document.createElement('span');
+        dots.textContent = '…';
+        dots.style.cssText = 'color:var(--text-muted);padding:0 6px;line-height:32px';
+        row.appendChild(dots);
+      }
+    }
+    row.appendChild(mkBtn('→', currentPage + 1, currentPage === pages, false));
+  }
+
+  // ── Filter buttons ────────────────────────────────────────────────────────
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type  = btn.dataset.filter;
+      const value = btn.dataset.value;
+
+      // Toggle active class in group
+      document.querySelectorAll(`[data-filter="${type}"]`).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (type === 'split')  filterSplit  = value;
+      if (type === 'status') filterStatus = value;
+      currentPage = 1;
+      rebuildGrid();
+    });
+  });
+
+  document.getElementById('searchInput')?.addEventListener('input', e => {
+    filterSearch = e.target.value.toLowerCase().trim();
+    currentPage  = 1;
+    rebuildGrid();
+  });
+
+  // ── Settings modal ────────────────────────────────────────────────────────
+  async function loadSettings() {
+    const res = await fetch('/api/settings');
+    _settings = await res.json();
+    document.getElementById('settingModel').value       = _settings.model       || '';
+    document.getElementById('settingProject').value     = _settings.project     || '';
+    document.getElementById('settingConcurrency').value = _settings.concurrency || 10;
+    document.getElementById('settingAnnotator').value   = _settings.annotator   || '';
+  }
+
+  document.getElementById('settingsSaveBtn')?.addEventListener('click', async () => {
+    const data = {
+      model:       document.getElementById('settingModel').value,
+      project:     document.getElementById('settingProject').value,
+      concurrency: parseInt(document.getElementById('settingConcurrency').value) || 10,
+      annotator:   document.getElementById('settingAnnotator').value,
+    };
+    await fetch('/api/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    document.getElementById('settingsModal').classList.remove('open');
+  });
+
+  document.getElementById('settingsCancelBtn')?.addEventListener('click', () => {
+    document.getElementById('settingsModal').classList.remove('open');
+  });
+
+  document.getElementById('settingsModal')?.addEventListener('click', e => {
+    if (e.target.id === 'settingsModal') e.target.classList.remove('open');
+  });
+
+  document.getElementById('btnThemeToggle')?.addEventListener('click', () => {
+    const isDark = document.documentElement.classList.toggle('dark-mode');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  });
+
+  await loadSettings();
+  rebuildGrid();
+</script>
+</body>
+</html>

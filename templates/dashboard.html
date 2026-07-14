@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Annotation Dashboard — {{ settings.annotator or 'Annotator' }}</title>
+  <meta name="description" content="Annotator dashboard — review images, run OCR, validate and save ground truth.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+    (function() {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark-mode');
+      }
+    })();
+  </script>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Topbar ────────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <a href="/" class="topbar-logo">
+      <div class="logo-icon">🧬</div>
+      <span>Annotation Lab</span>
+    </a>
+
+    <!-- Annotator name -->
+    <div style="display:flex;align-items:center;gap:8px;margin-left:8px">
+      <span style="color:var(--text-muted);font-size:12px">👤</span>
+      <span style="font-weight:600;font-size:14px">{{ settings.annotator or 'Annotator' }}</span>
+    </div>
+
+    <!-- Dual Progress Bars -->
+    <div style="flex:1;display:flex;flex-direction:column;gap:5px;margin:0 20px;min-width:0">
+
+      <!-- OCR Progress: only grows when AI runs OCR -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--blue);white-space:nowrap;min-width:96px">🤖 OCR Done</span>
+        <div class="progress-bar-wrap" style="flex:1">
+          <div class="progress-bar-fill" id="ocrProgressBarHeader"
+               style="width:{{ ((stats.ocr_done / stats.total * 100) if stats.total else 0)|round|int }}%;background:linear-gradient(90deg,var(--blue),#60a5fa)"></div>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--blue);white-space:nowrap;min-width:56px;text-align:right">
+          <span id="statOcrDone">{{ stats.ocr_done }}</span> / <span id="statTotal">{{ stats.total }}</span>
+        </span>
+      </div>
+
+      <!-- Reviewed Progress: grows when human presses Save/Enter -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--teal);white-space:nowrap;min-width:96px">👤 Reviewed</span>
+        <div class="progress-bar-wrap" style="flex:1">
+          <div class="progress-bar-fill" id="headerProgressBar"
+               style="width:{{ ((stats.reviewed / stats.total * 100) if stats.total else 0)|round|int }}%"></div>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--teal);white-space:nowrap;min-width:56px;text-align:right">
+          <span id="statReviewed">{{ stats.reviewed }}</span> / {{ stats.total }}
+        </span>
+      </div>
+
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="btnExport" data-tip="Download annotations.json">
+        ⬇ Export
+      </button>
+      <button class="btn btn-ghost" id="btnThemeToggle" data-tip="Toggle Light/Dark Theme">🌓</button>
+      <button class="btn btn-ghost" id="btnSettings" data-tip="Settings">⚙️</button>
+      <a href="/" class="btn btn-ghost">🗂 Explorer</a>
+    </div>
+  </header>
+
+  <!-- ── Dashboard Body ────────────────────────────────────────────────────── -->
+  <div class="dashboard-body" id="dashboardBody">
+
+    <!-- ── LEFT: Image Panel ─────────────────────────────────────────────── -->
+    <div class="dash-image-panel" id="imagePanel">
+
+      <!-- Canvas viewer -->
+      <div class="image-viewer-wrap">
+        <canvas id="mainCanvas"></canvas>
+        <!-- Loading spinner overlay -->
+        <div id="canvasSpinner" style="position:absolute;display:none;align-items:center;justify-content:center;inset:0;background:rgba(255,255,255,0.7)">
+          <div class="spinner" style="width:28px;height:28px;border-width:3px"></div>
+        </div>
+      </div>
+
+      <!-- Image meta -->
+      <div class="image-meta-bar">
+        <span id="ocrStatusBadge" class="badge badge-pending">Pending</span>
+        <span id="editedBadge" class="badge badge-edited" style="display:none">✏️ Edited</span>
+        <span id="diagramBadge" class="badge" style="display:none;background:rgba(37,99,235,0.15);color:var(--blue);border:1px solid rgba(37,99,235,0.25)">📊 Diagram</span>
+        <span id="filenameLabel" class="mono" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary)">—</span>
+        <span style="font-size:12px;color:var(--text-muted)">Split: <strong id="splitLabel">—</strong></span>
+        <span style="font-size:12px;color:var(--text-muted)" id="annotCountLabel">—</span>
+        <button class="btn btn-ghost" id="btnToggleMask" style="font-size:12px">🙈 Hide Mask</button>
+        <button class="btn btn-danger" id="btnDelete" style="font-size:12px" data-tip="Delete this image">🗑</button>
+      </div>
+
+      <!-- Navigation -->
+      <div class="image-nav-bar">
+        <button class="btn btn-ghost" id="btnPrev">← Prev</button>
+        <div class="nav-counter" id="navCounter">
+          <input type="number" id="jumpInput" min="1" placeholder="—" />
+          <span>/ <span id="navTotal">—</span></span>
+          <button id="btnJump" class="btn btn-ghost btn-jump">Go</button>
+        </div>
+        <button class="btn btn-ghost" id="btnNext">Next →</button>
+      </div>
+
+      <!-- Thumbnail strip (Hidden by default to save space) -->
+      <div class="thumb-strip" id="thumbStrip" style="display: none;">
+        <!-- Populated by JS -->
+      </div>
+
+    </div><!-- /dash-image-panel -->
+
+    <!-- ── Drag Resizer ──────────────────────────────────────────────────── -->
+    <div class="panel-resizer" id="panelResizer" title="Drag to resize"></div>
+
+    <!-- ── RIGHT: OCR Panel ───────────────────────────────────────────────── -->
+    <div class="ocr-panel" id="ocrPanel">
+
+      <!-- ── Compact OCR Controls + Live Progress strip ──────────────────── -->
+      <div class="ocr-panel-section" style="padding:8px 12px">
+
+        <!-- Row 1: Model + Concurrency + Buttons -->
+        <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+          <select id="ocrModelQuick" style="font-size:11px;padding:4px 6px;flex:1;min-width:120px">
+            <option value="gemini-2.5-flash-lite" {% if settings.model == 'gemini-2.5-flash-lite' %}selected{% endif %}>flash-lite</option>
+            <option value="gemini-2.5-flash"      {% if settings.model == 'gemini-2.5-flash' %}selected{% endif %}>flash</option>
+            <option value="gemini-3.1-flash-lite" {% if settings.model == 'gemini-3.1-flash-lite' %}selected{% endif %}>3.1-flash-lite</option>
+          </select>
+          <input type="number" id="ocrBatchSize" value="{{ settings.concurrency or 10 }}" min="1" max="50"
+                 style="width:48px;padding:4px 5px;font-size:11px" title="Concurrency">
+          <button class="btn btn-primary" id="btnRunOcr" style="font-size:11px;padding:4px 9px">▶ All</button>
+          <button class="btn btn-teal"    id="btnRunOcrCurrent" style="font-size:11px;padding:4px 9px">▶ This</button>
+          <button class="btn btn-ghost"   id="btnRetry" style="display:none;font-size:11px;padding:4px 8px">🔁</button>
+        </div>
+
+        <!-- Row 2: Live counters + mini bar -->
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted)">OCR:</span>
+          <span class="ocr-chip c-done"   title="Done">✅ <b id="cntDone">0</b></span>
+          <span class="ocr-chip c-running" title="Running">🔄 <b id="cntRunning">0</b></span>
+          <span class="ocr-chip c-failed"  title="Failed">❌ <b id="cntFailed">0</b></span>
+          <span class="ocr-chip c-queued"  title="Queued">⏳ <b id="cntQueued">0</b></span>
+          <div class="progress-bar-wrap" style="flex:1;height:4px">
+            <div class="progress-bar-fill" id="ocrProgressBar" style="width:0%;background:linear-gradient(90deg,var(--blue),#60a5fa)"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- OCR Text -->
+      <div class="ocr-panel-section flex-grow" style="padding-top:8px">
+        <h3 style="margin-bottom:6px">OCR Text — Current Image</h3>
+        <textarea id="ocrTextarea" placeholder="OCR text will appear here..."></textarea>
+
+        <!-- Status radios -->
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:5px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px">Validation Status</div>
+          <div class="status-radios">
+            <label class="status-radio-item"><input type="radio" name="imgStatus" value="pending"> 🔄 Pending</label>
+            <label class="status-radio-item"><input type="radio" name="imgStatus" value="validated"> ✅ Validated</label>
+            <label class="status-radio-item"><input type="radio" name="imgStatus" value="skipped"> ⏭ Skip</label>
+          </div>
+        </div>
+
+        <!-- Contains Diagram Option -->
+        <div style="margin-top:12px">
+          <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary);user-select:none;padding:6px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);transition:var(--transition)">
+            <input type="checkbox" id="chkContainsDiagram" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0" />
+            <span>📊 Contains Diagram</span>
+          </label>
+        </div>
+
+        <!-- Save -->
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn btn-teal" id="btnSave" style="flex:1">💾 Save</button>
+        </div>
+        <!-- Save status bar — 4 states: idle | saving | saved | error -->
+        <div id="saveStatusBar" style="margin-top:7px;border-radius:var(--radius-sm);overflow:hidden;font-size:11.5px;font-weight:500;min-height:32px;display:flex;align-items:center;padding:0 10px;gap:7px;background:var(--bg-base);border:1px solid var(--border);transition:background 0.2s,border-color 0.2s">
+          <span id="saveStatusIcon" style="font-size:13px">💾</span>
+          <span id="saveStatusText" style="flex:1;color:var(--text-muted)">No changes</span>
+          <span id="saveStatusTime" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)"></span>
+        </div>
+
+        <div style="margin-top:7px;font-size:11px;color:var(--text-muted);text-align:center;line-height:1.8">
+          <kbd>Enter</kbd> Save+Next &nbsp;
+          <kbd>← →</kbd> Navigate &nbsp;
+          <kbd>M</kbd> Toggle mask
+        </div>
+      </div>
+
+    </div><!-- /ocr-panel -->
+
+  </div><!-- /dashboard-body -->
+
+</div><!-- /app-shell -->
+
+
+<!-- ── Delete Confirmation Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--red)">⚠️ Confirm Deletion</div>
+    <div class="modal-subtitle">This action cannot be undone.</div>
+
+    <div style="background:var(--red-dim);border:1px solid var(--red);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-size:13px">
+      <strong>Will delete:</strong>
+      <ul style="margin-top:6px;margin-left:16px;color:var(--text-secondary)">
+        <li>Image file</li>
+        <li>Label (.txt) file</li>
+        <li>All saved OCR / annotation data</li>
+      </ul>
+      <div style="margin-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--red)" id="deleteImageName"></div>
+    </div>
+
+    <div style="margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-secondary)">
+      Type <strong style="color:var(--red)">DELETE</strong> to confirm:
+    </div>
+    <input type="text" id="deleteConfirmInput" placeholder="DELETE" autocomplete="off"
+           style="letter-spacing:2px;font-weight:700;font-family:var(--font-mono)">
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="deleteCancelBtn">Cancel</button>
+      <button class="btn btn-danger" id="deleteConfirmBtn" disabled>🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── Settings Modal ─────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-title">⚙️ Settings</div>
+    <div class="modal-subtitle">OCR model and annotator configuration.</div>
+
+    <div class="settings-row">
+      <label for="settingModel">Gemini Model</label>
+      <select id="settingModel">
+        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (recommended)</option>
+        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+      </select>
+    </div>
+
+    <div class="settings-row">
+      <label for="settingProject">GCP Project ID (Vertex AI)</label>
+      <input type="text" id="settingProject" placeholder="gradesmith-demo">
+    </div>
+
+    <div class="settings-row">
+      <label for="settingConcurrency">Concurrent OCR requests</label>
+      <input type="number" id="settingConcurrency" min="1" max="50" value="{{ settings.concurrency or 10 }}">
+    </div>
+
+    <div class="settings-row">
+      <label for="settingAnnotator">Your Name</label>
+      <input type="text" id="settingAnnotator" placeholder="e.g. Raunak">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="settingsCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="settingsSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+
+<script type="module" src="/static/js/dashboard.js"></script>
+
+<script>
+/* ── Panel Resizer — drag the divider to resize image vs OCR panel ── */
+(function () {
+  const resizer    = document.getElementById('panelResizer');
+  const imagePanel = document.getElementById('imagePanel');
+  const body       = document.getElementById('dashboardBody');
+  if (!resizer || !imagePanel || !body) return;
+
+  let dragging = false;
+  let startX   = 0;
+  let startW   = 0;
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    startX   = e.clientX;
+    startW   = imagePanel.getBoundingClientRect().width;
+    resizer.classList.add('dragging');
+    document.body.style.cursor   = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const totalW = body.getBoundingClientRect().width;
+    const delta  = e.clientX - startX;
+    const newW   = Math.min(Math.max(startW + delta, 280), totalW - 280);
+    imagePanel.style.width = newW + 'px';
+    imagePanel.style.flex  = 'none';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor    = '';
+    document.body.style.userSelect = '';
+  });
+
+  // Touch support
+  resizer.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startW = imagePanel.getBoundingClientRect().width;
+    dragging = true;
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const totalW = body.getBoundingClientRect().width;
+    const delta  = e.touches[0].clientX - startX;
+    const newW   = Math.min(Math.max(startW + delta, 280), totalW - 280);
+    imagePanel.style.width = newW + 'px';
+    imagePanel.style.flex  = 'none';
+  });
+
+  document.addEventListener('touchend', () => { dragging = false; });
+
+  // Double-click to reset to 50/50
+  resizer.addEventListener('dblclick', () => {
+    imagePanel.style.width = '';
+    imagePanel.style.flex  = '1';
+  });
+})();
+</script>
+</body>
+</html>
